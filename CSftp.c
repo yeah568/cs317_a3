@@ -8,6 +8,7 @@
 #include "usage.h"
 
 #define BACKLOG 10
+#define FTP_MAX_LEN 256
 
 
 // get sockaddr, IPv4 or IPv6:
@@ -44,7 +45,9 @@ int main(int argc, char **argv) {
     struct sockaddr_storage client_addr;
     socklen_t sin_size;
     char s[INET6_ADDRSTRLEN];
+    char buffer[FTP_MAX_LEN];
 
+    int in_len;
 
     // create socket
     if ((sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -80,6 +83,22 @@ int main(int argc, char **argv) {
 
         inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr*)&client_addr), s, sizeof(s));
         printf("server: got connection from %s\n", s);
+
+        if (send(newsockfd, "220 Welcome\n", 13, 0) == -1) {
+            perror("error on send");
+        }
+
+        printf("server: sent welcome\n");
+
+        bzero(buffer, 256);
+        if ((in_len = recv(newsockfd, buffer, 255, 0)) < 0) {
+            perror("error reading from socket");
+            exit(1);
+        }
+
+        printf("server: received %s\n", buffer);
+
+
     }
 
 
