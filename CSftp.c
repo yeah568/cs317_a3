@@ -1,17 +1,20 @@
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/sendfile.h>
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <unistd.h>
 #include "dir.h"
 #include "usage.h"
 
 #define DEBUG 1
 
 #define BACKLOG 10
-#define FTP_MAX_LEN 256
+#define FTP_MAX_LEN 512
+#define SEND_BUF_LEN 1024
 
 
 // get sockaddr, IPv4 or IPv6:
@@ -52,20 +55,35 @@ void srecv(int sockfd, char* buf) {
 void sendStatus(int sockfd, int status) {
     char* str;
     switch(status) {
+        case 125:
+            str = "125 Data connection already open; transfer starting.\n";
+            break;
         case 200:
             str = "200 Command okay.\n";
             break;
         case 220:
             str = "220 Service ready for new user.\n";
             break;
+        case 221:
+            str = "221 Service closing control connection.\n";
+            break;
+        case 226:
+            str = "226 Closing data connection.\n";
+            break;
         case 230:
             str = "230 User logged in, proceed.\n";
+            break;
+        case 250:
+            str = "250 Requested file action okay, completed.\n";
             break;
         case 500:
             str = "500 Syntax error, command unrecognized.\n";
             break;
         case 530:
             str = "530 Not logged in.\n";
+            break;
+        case 550:
+            str = "550 Requested action not taken.\n";
             break;
     }
     ssend(sockfd, str);
@@ -169,12 +187,7 @@ int main(int argc, char **argv) {
                     sendStatus(newsockfd, 500);
                 } else {
                     params = strsep(&str, " ");
-                    params[strcspn(params, "\r\n")] = 0; 
-
-                    #if DEBUG
-                    printf("server: USER command, params: %s\n", params);
-                    printf("strcmp: %d, len: %d\n", strcmp(params, "cs317"), strlen(params));
-                    #endif
+                    params[strcspn(params, "\r\n")] = 0;
 
                     if (strcmp("cs317", params) == 0) {
                         sendStatus(newsockfd, 230);
@@ -184,7 +197,10 @@ int main(int argc, char **argv) {
                     }
                 }
             } else if (strncmp("QUIT", cmd, 4) == 0) {
-
+                sendStatus(newsockfd, 221);
+                close(newsockfd);
+                //TODO: replace with pthread kill
+                exit(0);
             } else if (strncmp("TYPE", cmd, 4) == 0) {
                 params = strsep(&str, " ");
                 params[strcspn(params, "\r\n")] = 0; 
@@ -218,8 +234,6 @@ int main(int argc, char **argv) {
                 } else {
                     sendStatus(newsockfd, 500);
                 }
-            } else if (strncmp("RETR", cmd, 4) == 0) {
-
             } else if (strncmp("PASV", cmd, 4) == 0) {
                 // set up socket
                 if ((datasockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -266,7 +280,7 @@ int main(int argc, char **argv) {
                 printf("data connection port: %d\n", data_port);
                 #endif
 
-                char* outstr;
+                char outstr[FTP_MAX_LEN];
                 sprintf(outstr, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n",
                     (int) data_ip         & 0xff,
                     (int) (data_ip >>  8) & 0xff,
@@ -275,8 +289,44 @@ int main(int argc, char **argv) {
                     data_port / 256, 
                     data_port % 256);
                 ssend(newsockfd, outstr);
+            } else if (strncmp("RETR", cmd, 4) == 0) {
+                //client should connect before sending next command
+                sin_size = sizeof(client_addr);
+                newdatasockfd = accept(datasockfd, (struct sockaddr*)&data_client_addr, &data_sin_size);
+                if (newdatasockfd == -1) {
+                    perror("error on accept");
+                    continue; // TODO: change?
+                }
 
-                // client should connect before sending next command
+                #if DEBUG
+                inet_ntop(data_client_addr.ss_family, get_in_addr((struct sockaddr*)&data_client_addr), data_s, sizeof(data_s));
+                printf("server: data connected from %s\n", data_s);
+                #endif
+
+                char sendbuf[SEND_BUF_LEN]; 
+                str[strcspn(str, "\r\n")] = 0; 
+                
+                FILE* fp;
+                if ((fp= fopen(str, "r")) == NULL) {
+                    perror("file not found.\n");
+                    close(newdatasockfd);
+                    sendStatus(newsockfd, 550);
+                } else {
+                    sendStatus(newsockfd, 125);
+                    while(fread(sendbuf, sizeof(char), SEND_BUF_LEN, fp)) {
+                        if (send(newdatasockfd, sendbuf, strlen(sendbuf), 0) < 0) {
+                            perror("error on send");
+                            // TODO: exit?
+                        }
+                        printf("sending, buf: %s\n", sendbuf);
+                    }
+                    printf("done sending\n");
+                    sendStatus(newsockfd, 226);
+                    close(newdatasockfd);
+                }
+
+            } else if (strncmp("NLST", cmd, 4) == 0) {
+                 // client should connect before sending next command
                 //sin_size = sizeof(client_addr);
                 newdatasockfd = accept(datasockfd, (struct sockaddr*)&data_client_addr, &data_sin_size);
                 if (newdatasockfd == -1) {
@@ -289,8 +339,11 @@ int main(int argc, char **argv) {
                 printf("server: data connected from %s\n", data_s);
                 #endif
 
-            } else if (strncmp("NLST", cmd, 4) == 0) {
-
+                // TODO: check if data connection exists
+                sendStatus(newsockfd, 125);
+                listFiles(newdatasockfd, ".");
+                sendStatus(newsockfd, 226);
+                close(newdatasockfd);
             } else {
                 sendStatus(newsockfd, 500);
             }
