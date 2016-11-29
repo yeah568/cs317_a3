@@ -104,8 +104,19 @@ int main(int argc, char **argv) {
     char s[INET6_ADDRSTRLEN];
     char buffer[FTP_MAX_LEN];
 
+
     // keep state of ftp connection
     int userLoggedIn = 0;
+
+    int datasockfd, newdatasockfd;
+    struct sockaddr_in data_addr;
+    struct sockaddr_storage data_client_addr;
+    socklen_t data_sin_size;
+    char data_s[INET6_ADDRSTRLEN];
+    int data_port;
+    unsigned long data_ip;
+
+
 
     // create socket
     if ((sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -210,14 +221,79 @@ int main(int argc, char **argv) {
             } else if (strncmp("RETR", cmd, 4) == 0) {
 
             } else if (strncmp("PASV", cmd, 4) == 0) {
+                // set up socket
+                if ((datasockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+                    perror("error opening socket");
+                    // exit(1);
+                    // TODO: change to continue?
+                }
+
+                memset((char*) &data_addr, 0, sizeof(data_addr));
+                data_addr.sin_family = AF_INET;
+                data_addr.sin_addr.s_addr = INADDR_ANY;
+                data_addr.sin_port = 0; // let bind() assign a port
+
+                if (bind(datasockfd, (struct sockaddr*)&data_addr, sizeof(data_addr)) < 0) {
+                    perror("error binding");
+                    //exit(1);
+                    // TODO: change to continue?
+                }
+
+                if (listen(datasockfd, BACKLOG) < 0) {
+                    perror("error on listen");
+                    //exit(1);
+                    // TODO: change to continue?
+                }
+
+                struct sockaddr_in sin;
+                socklen_t len = sizeof(sin);
+                if (getsockname(datasockfd, (struct sockaddr *)&sin, &len) < 0) {
+                    perror("error on getsockname");
+                    // TODO: change to continue?
+                } else {
+                    data_port = ntohs(sin.sin_port);
+                }
+
+                // get IP address from control connection
+                if (getsockname(newsockfd, (struct sockaddr*)&sin, &len) < 0) {
+                    perror("error on getsockname");
+                    // TODO: change to continue?
+                } else {
+                    data_ip = sin.sin_addr.s_addr;
+                }
+
+                #if DEBUG
+                printf("data connection port: %d\n", data_port);
+                #endif
+
+                char* outstr;
+                sprintf(outstr, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n",
+                    (int) data_ip         & 0xff,
+                    (int) (data_ip >>  8) & 0xff,
+                    (int) (data_ip >> 16) & 0xff,
+                    (int) (data_ip >> 24) & 0xff,
+                    data_port / 256, 
+                    data_port % 256);
+                ssend(newsockfd, outstr);
+
+                // client should connect before sending next command
+                //sin_size = sizeof(client_addr);
+                newdatasockfd = accept(datasockfd, (struct sockaddr*)&data_client_addr, &data_sin_size);
+                if (newdatasockfd == -1) {
+                    perror("error on accept");
+                    continue; // TODO: change?
+                }
+
+                #if DEBUG
+                inet_ntop(data_client_addr.ss_family, get_in_addr((struct sockaddr*)&data_client_addr), data_s, sizeof(data_s));
+                printf("server: data connected from %s\n", data_s);
+                #endif
 
             } else if (strncmp("NLST", cmd, 4) == 0) {
 
             } else {
                 sendStatus(newsockfd, 500);
             }
-
-            free(str);
         }
     }
 
