@@ -14,6 +14,7 @@
 #define DEBUG 1
 
 #define BACKLOG 10
+#define NUM_THREADS 4
 #define FTP_MAX_LEN 512
 #define SEND_BUF_LEN 1024
 
@@ -100,6 +101,7 @@ void stringToUpper(char *s) {
 void* mainLoop(void* param) {
     int sockfd = *((int*)param);
 
+    // control connection
     int newsockfd;
     struct sockaddr_storage client_addr;
     socklen_t sin_size;
@@ -108,13 +110,18 @@ void* mainLoop(void* param) {
     // keep state of ftp connection
     int userLoggedIn = 0;
 
+    // data connection
     int datasockfd, newdatasockfd;
     struct sockaddr_in data_addr;
     struct sockaddr_storage data_client_addr;
     socklen_t data_sin_size;
-    char data_s[INET6_ADDRSTRLEN];
     int data_port;
     unsigned long data_ip;
+
+    #if DEBUG
+    // used for storing string version of IP address on connection
+    char data_s[INET6_ADDRSTRLEN];
+    #endif
 
     while(1) {
         sin_size = sizeof(client_addr);
@@ -134,8 +141,7 @@ void* mainLoop(void* param) {
         while(1) {
             srecv(newsockfd, buffer);
             
-            // More general pattern:
-            char* str = strdup(buffer);  // We own str's memory now.
+            char* str = strdup(buffer);
             char* cmd = strsep(&str, " ");
             stringToUpper(cmd);
 
@@ -161,6 +167,10 @@ void* mainLoop(void* param) {
                 //TODO: replace with pthread kill
                 break;
             } else if (strncmp("TYPE", cmd, 4) == 0) {
+                if (!userLoggedIn) {
+                    sendStatus(newsockfd, 530);
+                    continue;
+                }
                 params = strsep(&str, " ");
                 params[strcspn(params, "\r\n")] = 0; 
                 stringToUpper(params);
@@ -172,6 +182,11 @@ void* mainLoop(void* param) {
                     sendStatus(newsockfd, 500);
                 }
             } else if (strncmp("MODE", cmd, 4) == 0) {
+                if (!userLoggedIn) {
+                    sendStatus(newsockfd, 530);
+                    continue;
+                }
+
                 params = strsep(&str, " ");
                 params[strcspn(params, "\r\n")] = 0; 
                 stringToUpper(params);
@@ -183,6 +198,11 @@ void* mainLoop(void* param) {
                     sendStatus(newsockfd, 500);
                 }
             } else if (strncmp("STRU", cmd, 4) == 0) {
+                if (!userLoggedIn) {
+                    sendStatus(newsockfd, 530);
+                    continue;
+                }
+
                 params = strsep(&str, " ");
                 params[strcspn(params, "\r\n")] = 0; 
                 stringToUpper(params);
@@ -194,6 +214,11 @@ void* mainLoop(void* param) {
                     sendStatus(newsockfd, 500);
                 }
             } else if (strncmp("PASV", cmd, 4) == 0) {
+                if (!userLoggedIn) {
+                    sendStatus(newsockfd, 530);
+                    continue;
+                }
+
                 // set up socket
                 if ((datasockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
                     perror("error opening socket");
@@ -249,6 +274,11 @@ void* mainLoop(void* param) {
                     data_port % 256);
                 ssend(newsockfd, outstr);
             } else if (strncmp("RETR", cmd, 4) == 0) {
+                if (!userLoggedIn) {
+                    sendStatus(newsockfd, 530);
+                    continue;
+                }
+
                 //client should connect before sending next command
                 sin_size = sizeof(client_addr);
                 newdatasockfd = accept(datasockfd, (struct sockaddr*)&data_client_addr, &data_sin_size);
@@ -285,6 +315,11 @@ void* mainLoop(void* param) {
                 }
 
             } else if (strncmp("NLST", cmd, 4) == 0) {
+                if (!userLoggedIn) {
+                    sendStatus(newsockfd, 530);
+                    continue;
+                }
+
                  // client should connect before sending next command
                 //sin_size = sizeof(client_addr);
                 newdatasockfd = accept(datasockfd, (struct sockaddr*)&data_client_addr, &data_sin_size);
@@ -357,20 +392,14 @@ int main(int argc, char **argv) {
 
     printf("server: waiting for connections...\n");
 
-    void* thread = createThread(&mainLoop, (void*)&sockfd);
-    runThread(thread, NULL);
+    void* threads[NUM_THREADS];
+    for (i = 0; i < NUM_THREADS; i++) {
+        threads[i] = createThread(&mainLoop, (void*)&sockfd);
+        runThread(threads[i], NULL);
+    }
 
-    void* thread2 = createThread(&mainLoop, (void*)&sockfd);
-    runThread(thread2, NULL);
-    
-    void* thread3 = createThread(&mainLoop, (void*)&sockfd);
-    runThread(thread3, NULL);
-    
-    void* thread4 = createThread(&mainLoop, (void*)&sockfd);
-    runThread(thread4, NULL);
-
+    // prevent exiting
     while(1) {};
-
 
     return 0;
 }
