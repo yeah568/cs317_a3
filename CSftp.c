@@ -96,32 +96,11 @@ void stringToUpper(char *s) {
     }
 }
 
-// Here is an example of how to use the above function. It also shows
-// one how to get the arguments passed on the command line.
-
-int main(int argc, char **argv) {
-
-    // This is some sample code feel free to delete it
-    // This is the main program for the thread version of nc
-
-    int i;
-    
-    // Check the command line arguments
-    if (argc != 2) {
-      usage(argv[0]);
-      return -1;
-    }
-
-    int port = atoi(argv[1]);
-
-
-    int sockfd, newsockfd;
-    struct sockaddr_in serv_addr;
+void mainLoop(int sockfd) {
+    int newsockfd;
     struct sockaddr_storage client_addr;
     socklen_t sin_size;
-    char s[INET6_ADDRSTRLEN];
     char buffer[FTP_MAX_LEN];
-
 
     // keep state of ftp connection
     int userLoggedIn = 0;
@@ -134,32 +113,6 @@ int main(int argc, char **argv) {
     int data_port;
     unsigned long data_ip;
 
-
-
-    // create socket
-    if ((sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
-        perror("error opening socket");
-        exit(1);
-    }
-
-    memset((char*) &serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(port);
-
-    // bind host address
-    if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("error binding");
-        exit(1);
-    }
-
-    if (listen(sockfd, BACKLOG) < 0) {
-        perror("error on listen");
-        exit(1);
-    }
-
-    printf("server: waiting for connections...\n");
-
     while(1) {
         sin_size = sizeof(client_addr);
         newsockfd = accept(sockfd, (struct sockaddr*)&client_addr, &sin_size);
@@ -168,8 +121,11 @@ int main(int argc, char **argv) {
             continue;
         }
 
+        #if DEBUG
+        char s[INET6_ADDRSTRLEN];
         inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr*)&client_addr), s, sizeof(s));
         printf("server: got connection from %s\n", s);
+        #endif
 
         sendStatus(newsockfd, 220);
         while(1) {
@@ -349,13 +305,56 @@ int main(int argc, char **argv) {
             }
         }
     }
+}
 
 
-    // This is how to call the function in dir.c to get a listing of a directory.
-    // It requires a file descriptor, so in your code you would pass in the file descriptor 
-    // returned for the ftp server's data connection
+// Here is an example of how to use the above function. It also shows
+// one how to get the arguments passed on the command line.
+
+int main(int argc, char **argv) {
+
+    // This is some sample code feel free to delete it
+    // This is the main program for the thread version of nc
+
+    int i;
     
-    printf("Printed %d directory entries\n", listFiles(1, "."));
-    return 0;
+    // Check the command line arguments
+    if (argc != 2) {
+      usage(argv[0]);
+      return -1;
+    }
 
+    int port = atoi(argv[1]);
+
+
+    int sockfd;
+    struct sockaddr_in serv_addr;
+
+    // create socket
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+        perror("error opening socket");
+        exit(1);
+    }
+
+    memset((char*) &serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    serv_addr.sin_port = htons(port);
+
+    // bind host address
+    if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("error binding");
+        exit(1);
+    }
+
+    if (listen(sockfd, BACKLOG) < 0) {
+        perror("error on listen");
+        exit(1);
+    }
+
+    printf("server: waiting for connections...\n");
+
+    mainLoop(sockfd);
+
+    return 0;
 }
