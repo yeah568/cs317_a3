@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include "dir.h"
 #include "usage.h"
+#include "Thread.h"
 
 #define DEBUG 1
 
@@ -96,7 +97,9 @@ void stringToUpper(char *s) {
     }
 }
 
-void mainLoop(int sockfd) {
+void* mainLoop(void* param) {
+    int sockfd = *((int*)param);
+
     int newsockfd;
     struct sockaddr_storage client_addr;
     socklen_t sin_size;
@@ -156,7 +159,7 @@ void mainLoop(int sockfd) {
                 sendStatus(newsockfd, 221);
                 close(newsockfd);
                 //TODO: replace with pthread kill
-                exit(0);
+                break;
             } else if (strncmp("TYPE", cmd, 4) == 0) {
                 params = strsep(&str, " ");
                 params[strcspn(params, "\r\n")] = 0; 
@@ -354,7 +357,20 @@ int main(int argc, char **argv) {
 
     printf("server: waiting for connections...\n");
 
-    mainLoop(sockfd);
+    void* thread = createThread(&mainLoop, (void*)&sockfd);
+    runThread(thread, NULL);
+
+    void* thread2 = createThread(&mainLoop, (void*)&sockfd);
+    runThread(thread2, NULL);
+    
+    void* thread3 = createThread(&mainLoop, (void*)&sockfd);
+    runThread(thread3, NULL);
+    
+    void* thread4 = createThread(&mainLoop, (void*)&sockfd);
+    runThread(thread4, NULL);
+
+    while(1) {};
+
 
     return 0;
 }
