@@ -42,7 +42,10 @@ void ssend(int sockfd, char* buf) {
 
 void srecv(int sockfd, char* buf) {
     int in_len;
+    
+    // clear buffer before receive
     bzero(buf, FTP_MAX_LEN);
+
     if ((in_len = recv(sockfd, buf, FTP_MAX_LEN, 0)) < 0) {
         perror("error reading from socket");
         // TODO: exit?
@@ -137,10 +140,14 @@ void* mainLoop(void* param) {
         printf("server: got connection from %s\n", s);
         #endif
 
+        // welcome
         sendStatus(newsockfd, 220);
         while(1) {
+            // get command from client
             srecv(newsockfd, buffer);
             
+            // split input string on first space
+            // then convert to all caps to get command
             char* str = strdup(buffer);
             char* cmd = strsep(&str, " ");
             stringToUpper(cmd);
@@ -149,6 +156,7 @@ void* mainLoop(void* param) {
 
             if (strncmp("USER", cmd, 4) == 0) {
                 if (userLoggedIn) {
+                    // already logged in, unrecognized command
                     sendStatus(newsockfd, 500);
                 } else {
                     params = strsep(&str, " ");
