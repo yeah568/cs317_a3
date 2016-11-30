@@ -36,15 +36,15 @@ void ssend(int sockfd, char* buf) {
         perror("error on send");
         // TODO: exit?
     } else {
-        #if DEBUG
+#if DEBUG
         printf("--> %s\n", buf);
-        #endif
+#endif
     }
 }
 
 void srecv(int sockfd, char* buf) {
     int in_len;
-    
+
     // clear buffer before receive
     bzero(buf, FTP_MAX_LEN);
 
@@ -52,55 +52,54 @@ void srecv(int sockfd, char* buf) {
         perror("error reading from socket");
         // TODO: exit?
     } else {
-        //buf[in_len] = '\0';
-        #if DEBUG
+#if DEBUG
         printf("<-- %s\n", buf);
-        #endif
+#endif
     }
 }
 
 void sendStatus(int sockfd, int status) {
     char* str;
-    switch(status) {
-        case 125:
-            str = "125 Data connection already open; transfer starting.\n";
-            break;
-        case 200:
-            str = "200 Command okay.\n";
-            break;
-        case 220:
-            str = "220 Service ready for new user.\n";
-            break;
-        case 221:
-            str = "221 Service closing control connection.\n";
-            break;
-        case 225:
-            str = "225 Can't open data connection.\n";
-            break;
-        case 226:
-            str = "226 Closing data connection.\n";
-            break;
-        case 230:
-            str = "230 User logged in, proceed.\n";
-            break;
-        case 250:
-            str = "250 Requested file action okay, completed.\n";
-            break;
-        case 425:
-            str = "425 Can't open data connection.\n";
-            break;
-        case 426:
-            str = "426 Connection closed; transfer aborted.\n";
-            break;
-        case 500:
-            str = "500 Syntax error, command unrecognized.\n";
-            break;
-        case 530:
-            str = "530 Not logged in.\n";
-            break;
-        case 550:
-            str = "550 Requested action not taken.\n";
-            break;
+    switch (status) {
+    case 125:
+        str = "125 Data connection already open; transfer starting.\n";
+        break;
+    case 200:
+        str = "200 Command okay.\n";
+        break;
+    case 220:
+        str = "220 Service ready for new user.\n";
+        break;
+    case 221:
+        str = "221 Service closing control connection.\n";
+        break;
+    case 225:
+        str = "225 Can't open data connection.\n";
+        break;
+    case 226:
+        str = "226 Closing data connection.\n";
+        break;
+    case 230:
+        str = "230 User logged in, proceed.\n";
+        break;
+    case 250:
+        str = "250 Requested file action okay, completed.\n";
+        break;
+    case 425:
+        str = "425 Can't open data connection.\n";
+        break;
+    case 426:
+        str = "426 Connection closed; transfer aborted.\n";
+        break;
+    case 500:
+        str = "500 Syntax error, command unrecognized.\n";
+        break;
+    case 530:
+        str = "530 Not logged in.\n";
+        break;
+    case 550:
+        str = "550 Requested action not taken.\n";
+        break;
     }
     ssend(sockfd, str);
 }
@@ -117,9 +116,9 @@ int establishDataConnection(int datasockfd, struct sockaddr_storage* data_client
         return -1;
     } else if (!val) {
         // not listening, need to call pasv first
-        return -1; 
+        return -1;
     }
-    
+
     // setup timeout on data connection
     struct timeval tv;
     fd_set readfs;
@@ -130,7 +129,7 @@ int establishDataConnection(int datasockfd, struct sockaddr_storage* data_client
     FD_ZERO(&readfs);
     FD_SET(datasockfd, &readfs);
 
-    rc = select(datasockfd+1, &readfs, NULL, NULL, &tv);
+    rc = select(datasockfd + 1, &readfs, NULL, NULL, &tv);
 
     if (FD_ISSET(datasockfd, &readfs)) {
         // connection ready
@@ -140,15 +139,15 @@ int establishDataConnection(int datasockfd, struct sockaddr_storage* data_client
         newdatasockfd = accept(datasockfd, (struct sockaddr*)data_client_addr, data_sin_size);
         if (newdatasockfd == -1) {
             perror("error on accept");
-            return -1; // TODO: change?
+            return -1; 
         }
 
-        #if DEBUG
+#if DEBUG
         // used for storing string version of IP address on connection
         char data_s[INET6_ADDRSTRLEN];
         inet_ntop(data_client_addr->ss_family, get_in_addr((struct sockaddr*)&data_client_addr), data_s, sizeof(data_s));
         printf("server: data connected from %s\n", data_s);
-        #endif
+#endif
 
         return newdatasockfd;
     } else {
@@ -158,7 +157,7 @@ int establishDataConnection(int datasockfd, struct sockaddr_storage* data_client
 
 void stringToUpper(char *s) {
     int i;
-    for(i = 0; s[i] != '\0'; s++) {
+    for (i = 0; s[i] != '\0'; s++) {
         s[i] = toupper(s[i]);
     }
 }
@@ -187,7 +186,7 @@ void* mainLoop(void* param) {
     // main while loop
     // when a client connects, will get the newsockfd from accept().
     // this then runs the inner handler loop until it disconnects.
-    while(1) {
+    while (1) {
         sin_size = sizeof(client_addr);
         newsockfd = accept(sockfd, (struct sockaddr*)&client_addr, &sin_size);
         if (newsockfd == -1) {
@@ -195,21 +194,21 @@ void* mainLoop(void* param) {
             continue;
         }
 
-        #if DEBUG
+#if DEBUG
         char s[INET6_ADDRSTRLEN];
         inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr*)&client_addr), s, sizeof(s));
         printf("server: got connection from %s\n", s);
-        #endif
+#endif
 
         // welcome
         sendStatus(newsockfd, 220);
 
         // main handler loop
         // loops by receiving command lines from client, handling, responding, then repeats.
-        while(1) {
+        while (1) {
             // get command from client
             srecv(newsockfd, buffer);
-            
+
             // split input string on first space
             // then convert to all caps to get command
             char* str = strdup(buffer);
@@ -248,11 +247,11 @@ void* mainLoop(void* param) {
                     continue;
                 }
                 params = strsep(&str, " ");
-                params[strcspn(params, "\r\n")] = 0; 
+                params[strcspn(params, "\r\n")] = 0;
                 stringToUpper(params);
 
                 if (strcmp("I", params) == 0 ||
-                    strcmp("A", params) == 0) {
+                        strcmp("A", params) == 0) {
                     sendStatus(newsockfd, 200);
                 } else {
                     sendStatus(newsockfd, 500);
@@ -264,7 +263,7 @@ void* mainLoop(void* param) {
                 }
 
                 params = strsep(&str, " ");
-                params[strcspn(params, "\r\n")] = 0; 
+                params[strcspn(params, "\r\n")] = 0;
                 stringToUpper(params);
 
                 if (strcmp("S", params) == 0) {
@@ -280,7 +279,7 @@ void* mainLoop(void* param) {
                 }
 
                 params = strsep(&str, " ");
-                params[strcspn(params, "\r\n")] = 0; 
+                params[strcspn(params, "\r\n")] = 0;
                 stringToUpper(params);
 
                 if (strcmp("F", params) == 0) {
@@ -338,21 +337,21 @@ void* mainLoop(void* param) {
                     data_ip = sin.sin_addr.s_addr;
                 }
 
-                #if DEBUG
+#if DEBUG
                 printf("data connection port: %d\n", data_port);
-                #endif
+#endif
 
                 isDataConnectionOpen = 1;
 
                 // create respons message
                 char outstr[FTP_MAX_LEN];
                 sprintf(outstr, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n",
-                    (int) data_ip         & 0xff,
-                    (int) (data_ip >>  8) & 0xff,
-                    (int) (data_ip >> 16) & 0xff,
-                    (int) (data_ip >> 24) & 0xff,
-                    data_port / 256, 
-                    data_port % 256);
+                        (int) data_ip         & 0xff,
+                        (int) (data_ip >>  8) & 0xff,
+                        (int) (data_ip >> 16) & 0xff,
+                        (int) (data_ip >> 24) & 0xff,
+                        data_port / 256,
+                        data_port % 256);
                 ssend(newsockfd, outstr);
             } else if (strncmp("RETR", cmd, 4) == 0) {
                 if (!userLoggedIn) {
@@ -360,14 +359,14 @@ void* mainLoop(void* param) {
                     continue;
                 }
 
-                char sendbuf[SEND_BUF_LEN]; 
-                str[strcspn(str, "\r\n")] = 0; 
+                char sendbuf[SEND_BUF_LEN];
+                str[strcspn(str, "\r\n")] = 0;
 
                 if (!isDataConnectionOpen) {
                     sendStatus(newsockfd, 225);
                     continue;
                 }
-                
+
                 if ((newdatasockfd = establishDataConnection(datasockfd, &data_client_addr, &data_sin_size)) < 0) {
                     // error or timeout on data connection
                     close(datasockfd);
@@ -385,7 +384,7 @@ void* mainLoop(void* param) {
                 } else {
                     // file ok, start send
                     sendStatus(newsockfd, 125);
-                    while(fread(sendbuf, sizeof(char), SEND_BUF_LEN, fp)) {
+                    while (fread(sendbuf, sizeof(char), SEND_BUF_LEN, fp)) {
                         if (send(newdatasockfd, sendbuf, strlen(sendbuf), 0) < 0) {
                             perror("error on send");
                             close(newdatasockfd);
@@ -397,7 +396,6 @@ void* mainLoop(void* param) {
                     sendStatus(newsockfd, 226);
                     close(newdatasockfd);
                 }
-
             } else if (strncmp("NLST", cmd, 4) == 0) {
                 if (!userLoggedIn) {
                     sendStatus(newsockfd, 530);
@@ -416,14 +414,11 @@ void* mainLoop(void* param) {
                     continue;
                 }
 
-                // TODO: check if data connection exists
                 sendStatus(newsockfd, 125);
                 listFiles(newdatasockfd, ".");
                 sendStatus(newsockfd, 226);
                 close(datasockfd);
                 close(newdatasockfd);
-
-
             } else {
                 sendStatus(newsockfd, 500);
             }
@@ -441,11 +436,11 @@ int main(int argc, char **argv) {
     // This is the main program for the thread version of nc
 
     int i;
-    
+
     // Check the command line arguments
     if (argc != 2) {
-      usage(argv[0]);
-      return -1;
+        usage(argv[0]);
+        return -1;
     }
 
     int port = atoi(argv[1]);
@@ -485,7 +480,7 @@ int main(int argc, char **argv) {
     }
 
     // prevent exiting
-    while(1) {};
+    while (1) {};
 
     return 0;
 }
